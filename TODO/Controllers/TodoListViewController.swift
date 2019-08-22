@@ -7,8 +7,11 @@
 //
 
 import UIKit
+import CoreData
 
 class TodoListViewController: UITableViewController {
+    
+    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     
 //    let defaults = UserDefaults.standard
     
@@ -69,6 +72,8 @@ class TodoListViewController: UITableViewController {
 //            itemArray[indexPath.row].done = false
 //        }
         itemArray[indexPath.row].done = !itemArray[indexPath.row].done
+        let title = itemArray[indexPath.row].title
+        itemArray[indexPath.row].setValue(title! + " - (已完成)", forKey: "title")
         saveItems()
         tableView.beginUpdates()
         tableView.reloadRows(at: [indexPath], with: UITableView.RowAnimation.none)
@@ -84,15 +89,21 @@ class TodoListViewController: UITableViewController {
         let action = UIAlertAction(title: "添加项目", style: .default) { (action) in
             // 用户单机添加项目按钮以后要执行的代码
 //            print(textField.text!)
+            /*
             // 创建Item类型对象
             let newItem = Item()
             // 设置title属性
             newItem.title = textField.text!
             // 将newItem添加到itemArray数组之中
+            */
+            // 使用coreData创建对象
+            let newItem = Item(context: self.context)
+            newItem.title = textField.text!
+            newItem.done = false
             self.itemArray.append(newItem)
             self.saveItems()
 //            self.defaults.set(self.itemArray, forKey: "ToDoListArray")
-            self.tableView.reloadData()
+//            self.tableView.reloadData()
         }
         alert.addTextField { (alertTextField) in
             alertTextField.placeholder = "创建一个新项目..."
@@ -105,27 +116,48 @@ class TodoListViewController: UITableViewController {
     
     //MARK: - save Items
     func saveItems() {
-        let encoder = PropertyListEncoder()
+//        let encoder = PropertyListEncoder()
+//        do {
+//            let data = try encoder.encode(itemArray)
+//            try data.write(to: dataFilePath!)
+//        }catch {
+//            print("编码错误:\(error)")
+//        }
         do {
-            let data = try encoder.encode(itemArray)
-            try data.write(to: dataFilePath!)
+            try context.save()
         }catch {
-            print("编码错误:\(error)")
+            print("保存context错误:\(error)")
         }
+        tableView.reloadData()
     }
     
     //MARK: - load Items
-    func loadItems() {
-        if let data = try? Data(contentsOf: dataFilePath!) {
-            let decoder = PropertyListDecoder()
-            do {
-                itemArray = try decoder.decode([Item].self, from: data)
-            }catch {
-                print("解码item错误！")
-            }
+    func loadItems(with request: NSFetchRequest<Item> = Item.fetchRequest()) {
+        do {
+            itemArray = try context.fetch(request)
+        }catch {
+            print("从context获取数据错误:\(error)")
         }
-        
+        tableView.reloadData()
     }
     
 }
 
+//MARK: - extension for UISearchBarDelegate
+extension TodoListViewController: UISearchBarDelegate {
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        let request: NSFetchRequest<Item> = Item.fetchRequest()
+        request.predicate = NSPredicate(format: "title CONTAINS[c]%@", searchBar.text!)
+        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        loadItems(with: request)
+    }
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchBar.text?.count == 0 {
+            loadItems()
+            DispatchQueue.main.async {
+                searchBar.resignFirstResponder()
+            }
+        }
+    }
+}
